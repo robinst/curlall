@@ -1,12 +1,16 @@
-use serde_json::Value;
-use structopt::StructOpt;
-use std::{fmt, io};
-use reqwest::Url;
+use reqwest::Client;
+use reqwest::RequestBuilder;
 use reqwest::StatusCode;
-use reqwest::RequestBuilder
+use reqwest::Url;
+use serde_json::Value;
+use std::{fmt, io};
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "concurl", about = "Basic curl but automatically follows next page links")]
+#[structopt(
+    name = "concurl",
+    about = "Basic curl but automatically follows next page links"
+)]
 struct Opt {
     /// Basic auth
     #[structopt(short = "u", long = "user", name = "user:password")]
@@ -30,9 +34,7 @@ struct ResponseError {
 
 impl ResponseError {
     fn new(body: String) -> Self {
-        Self {
-            body,
-        }
+        Self { body }
     }
 }
 
@@ -44,28 +46,24 @@ impl fmt::Display for ResponseError {
 
 impl std::error::Error for ResponseError {}
 
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let opt = Opt::from_args();
 
-    let client = reqwest::Client::new();
+    let client = Client::new();
 
     let start_url = Url::parse(&opt.url)?;
-    let mut query_pairs = Vec::new();
-    let mut page = 1;
-    for (key, value) in start_url.query_pairs() {
-        if &key == "page" {
-            page = value.parse()?;
-        } else {
-            query_pairs.push((key.to_string(), value.to_string()));
-        }
-    }
+    let (page_param, query_pairs) = parse_page_query(&start_url);
+    let mut page = None;
+    let mut try_page_numbers = true;
 
     let values_limit = opt.number.unwrap_or(std::usize::MAX);
     let mut values_printed = 0;
     let mut next_url = Some(start_url);
     while let Some(mut url) = next_url {
-        let request = request_options(client.get(url.clone()), &opt);
+        let request = request(url.clone(), &client, &opt);
 
         let response = request.send().await?;
         if response.status() == StatusCode::NOT_FOUND && values_printed > 0 {
@@ -79,9 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err(ResponseError::new(body).into());
         }
 
-        let body = response
-            .json::<Value>()
-            .await?;
+        let body = response.json::<Value>().await?;
 
         if let Some(values) = body.get("values").and_then(|v| v.as_array()) {
             if values.is_empty() {
@@ -98,16 +94,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
             }
+        } else {
+            return Err(format!("No \"values\" found in response: {}", body).into());
         }
         next_url = None;
         if values_printed < values_limit {
-            page += 1;
             // If there's a "next" URL, use that. Otherwise try `page=N` query param
             if let Some(next) = body.get("next").and_then(|o| o.as_str()) {
                 next_url = Some(Url::parse(next)?);
-            } else {
-                url.query_pairs_mut().clear().extend_pairs(&query_pairs).append_pair("page", &format!("{}", page));
+                try_page_numbers = false;
+            } else if try_page_numbers {
+                let mut page_number = if let Some(page_number) = page {
+                    page_number
+                } else {
+                    // Ok, first time we're trying to page.
+                    // If the start URL had a page param, try to parse it as a number.
+                    if let Some(param) = &page_param {
+                        param.parse().map_err(|e| {
+                            format!(
+                                "Page query param '{}' could not be parsed as a number: {}",
+                                param, e
+                            )
+                        })?
+                    } else {
+                        // Otherwise assume we were at page 1
+                        1
+                    }
+                };
+
+                page_number += 1;
+
+                url.query_pairs_mut()
+                    .clear()
+                    .extend_pairs(&query_pairs)
+                    .append_pair("page", &format!("{}", page_number));
                 next_url = Some(url);
+                page = Some(page_number);
             }
         }
     }
@@ -115,7 +137,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn request_options(request: RequestBuilder, opt: &Opt) -> RequestBuilder {
+fn parse_page_query(start_url: &Url) -> (Option<String>, Vec<(String, String)>) {
+    let mut page = None;
+    let mut query_pairs = Vec::new();
+    for (key, value) in start_url.query_pairs() {
+        if &key == "page" {
+            page = Some(value.to_string());
+        } else {
+            query_pairs.push((key.to_string(), value.to_string()));
+        }
+    }
+    (page, query_pairs)
+}
+
+fn request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
+    let mut request = client.get(url);
     if let Some(user_password) = &opt.user_password {
         let parts: Vec<_> = user_password.splitn(2, ":").collect();
         if parts.len() == 1 {
