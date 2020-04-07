@@ -16,10 +16,6 @@ struct Opt {
     #[structopt(short = "u", long = "user", name = "user:password")]
     user_password: Option<String>,
 
-    /// TODO
-    #[structopt(short = "p", long = "path")]
-    path: Vec<String>,
-
     /// How many values to return (determines how many pages are fetched)
     #[structopt(short = "n", long = "number")]
     number: Option<usize>,
