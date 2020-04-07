@@ -3,7 +3,7 @@ use reqwest::RequestBuilder;
 use reqwest::StatusCode;
 use reqwest::Url;
 use serde_json::Value;
-use std::{fmt, io, process};
+use std::{io, process};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
@@ -75,7 +75,11 @@ async fn run_async(opt: Opt) -> Result<()> {
 
         let body = response.json::<Value>().await?;
 
-        if let Some(values) = body.get("values").and_then(|v| v.as_array()) {
+        if let Some(values) = body
+            .get("values")
+            .and_then(|v| v.as_array())
+            .or_else(|| body.as_array())
+        {
             if values.is_empty() {
                 // No more values returned, assume we've reached the end.
                 break;
@@ -91,8 +95,9 @@ async fn run_async(opt: Opt) -> Result<()> {
                 }
             }
         } else {
-            return Err(format!("No \"values\" found in response: {}", body).into());
+            return Err(format!("Could not read values from response. Expected either `{"values": [...]}` or `[...]`, got: {}", body).into());
         }
+
         next_url = None;
         if values_printed < values_limit {
             // If there's a "next" URL, use that. Otherwise try `page=N` query param
