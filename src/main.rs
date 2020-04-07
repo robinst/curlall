@@ -50,14 +50,12 @@ async fn run_async(opt: Opt) -> Result<()> {
     let client = Client::new();
 
     let start_url = Url::parse(&opt.url)?;
-    let (page_param, query_pairs) = parse_page_query(&start_url);
-    let mut page = None;
-    let mut try_page_numbers = true;
+    let mut pager = Pager::new(&start_url);
 
     let values_limit = opt.number.unwrap_or(std::usize::MAX);
     let mut values_printed = 0;
     let mut next_url = Some(start_url);
-    while let Some(mut url) = next_url {
+    while let Some(url) = next_url {
         let request = request(url.clone(), &client, &opt);
 
         let response = request.send().await?;
@@ -95,60 +93,18 @@ async fn run_async(opt: Opt) -> Result<()> {
                 }
             }
         } else {
-            return Err(format!("Could not read values from response. Expected either `{"values": [...]}` or `[...]`, got: {}", body).into());
+            return Err(format!(r#"Could not read values from response. Expected either `{{"values": [...]}}` or `[...]`, got: {}"#, body).into());
         }
 
-        next_url = None;
         if values_printed < values_limit {
-            // If there's a "next" URL, use that. Otherwise try `page=N` query param
-            if let Some(next) = body.get("next").and_then(|o| o.as_str()) {
-                next_url = Some(Url::parse(next)?);
-                try_page_numbers = false;
-            } else if try_page_numbers {
-                let mut page_number = if let Some(page_number) = page {
-                    page_number
-                } else {
-                    // Ok, first time we're trying to page.
-                    // If the start URL had a page param, try to parse it as a number.
-                    if let Some(param) = &page_param {
-                        param.parse().map_err(|e| {
-                            format!(
-                                "Page query param '{}' could not be parsed as a number: {}",
-                                param, e
-                            )
-                        })?
-                    } else {
-                        // Otherwise assume we were at page 1
-                        1
-                    }
-                };
-
-                page_number += 1;
-
-                url.query_pairs_mut()
-                    .clear()
-                    .extend_pairs(&query_pairs)
-                    .append_pair("page", &format!("{}", page_number));
-                next_url = Some(url);
-                page = Some(page_number);
-            }
+            let from_response = body.get("next").and_then(|o| o.as_str());
+            next_url = pager.next(from_response)?;
+        } else {
+            next_url = None;
         }
     }
 
     Ok(())
-}
-
-fn parse_page_query(start_url: &Url) -> (Option<String>, Vec<(String, String)>) {
-    let mut page = None;
-    let mut query_pairs = Vec::new();
-    for (key, value) in start_url.query_pairs() {
-        if &key == "page" {
-            page = Some(value.to_string());
-        } else {
-            query_pairs.push((key.to_string(), value.to_string()));
-        }
-    }
-    (page, query_pairs)
 }
 
 fn request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
@@ -162,4 +118,71 @@ fn request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
         }
     }
     request
+}
+
+struct Pager {
+    start_url: Url,
+    page: Option<usize>,
+    page_param: Option<String>,
+    query_params: Vec<(String, String)>,
+    try_page_numbers: bool,
+}
+
+impl Pager {
+    fn new(start_url: &Url) -> Self {
+        let mut page_param = None;
+        let mut query_params = Vec::new();
+        for (key, value) in start_url.query_pairs() {
+            if &key == "page" {
+                page_param = Some(value.to_string());
+            } else {
+                query_params.push((key.to_string(), value.to_string()));
+            }
+        }
+        Pager {
+            start_url: start_url.clone(),
+            page: None,
+            page_param,
+            query_params,
+            try_page_numbers: true,
+        }
+    }
+
+    fn next(&mut self, next_url_from_response: Option<&str>) -> Result<Option<Url>> {
+        // If there's a "next" URL, use that. Otherwise try `page=N` query param
+        if let Some(next) = next_url_from_response {
+            self.try_page_numbers = false;
+            Ok(Some(Url::parse(next)?))
+        } else if self.try_page_numbers {
+            let mut page_number = if let Some(page_number) = self.page {
+                page_number
+            } else {
+                // Ok, first time we're trying to page.
+                // If the start URL had a page param, try to parse it as a number.
+                if let Some(param) = &self.page_param {
+                    param.parse().map_err(|e| {
+                        format!(
+                            "Page query param '{}' could not be parsed as a number: {}",
+                            param, e
+                        )
+                    })?
+                } else {
+                    // Otherwise assume we were at page 1
+                    1
+                }
+            };
+
+            page_number += 1;
+            self.page = Some(page_number);
+
+            let mut url = self.start_url.clone();
+            url.query_pairs_mut()
+                .clear()
+                .extend_pairs(&self.query_params)
+                .append_pair("page", &format!("{}", page_number));
+            Ok(Some(url))
+        } else {
+            Ok(None)
+        }
+    }
 }
