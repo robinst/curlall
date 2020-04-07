@@ -3,12 +3,15 @@ use reqwest::RequestBuilder;
 use reqwest::StatusCode;
 use reqwest::Url;
 use serde_json::Value;
-use std::{fmt, io};
+use std::{fmt, io, process};
 use structopt::StructOpt;
+use tokio::runtime::Runtime;
+
+const NAME: &str = "concurl";
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "concurl",
+    name = NAME,
     about = "Basic curl but automatically follows next page links"
 )]
 struct Opt {
@@ -36,7 +39,7 @@ impl ResponseError {
 
 impl fmt::Display for ResponseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}", self.body)
+        write!(f, "Response error: {}", self.body)
     }
 }
 
@@ -44,10 +47,28 @@ impl std::error::Error for ResponseError {}
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let opt = Opt::from_args();
 
+fn main() {
+    let opt = Opt::from_args();
+    match run(opt) {
+        Err(err) => {
+            eprintln!("{}: {}", NAME, err);
+            process::exit(1);
+        },
+        Ok(_) => {
+            process::exit(0);
+        }
+    }
+}
+
+fn run(opt: Opt) -> Result<()> {
+    let mut rt = Runtime::new()?;
+    rt.block_on(async {
+        run_async(opt).await
+    })
+}
+
+async fn run_async(opt: Opt) -> Result<()> {
     let client = Client::new();
 
     let start_url = Url::parse(&opt.url)?;
