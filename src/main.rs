@@ -26,27 +26,7 @@ struct Opt {
     url: String,
 }
 
-#[derive(Debug)]
-struct ResponseError {
-    body: String,
-}
-
-impl ResponseError {
-    fn new(body: String) -> Self {
-        Self { body }
-    }
-}
-
-impl fmt::Display for ResponseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Response error: {}", self.body)
-    }
-}
-
-impl std::error::Error for ResponseError {}
-
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
 
 fn main() {
     let opt = Opt::from_args();
@@ -54,7 +34,7 @@ fn main() {
         Err(err) => {
             eprintln!("{}: {}", NAME, err);
             process::exit(1);
-        },
+        }
         Ok(_) => {
             process::exit(0);
         }
@@ -63,9 +43,7 @@ fn main() {
 
 fn run(opt: Opt) -> Result<()> {
     let mut rt = Runtime::new()?;
-    rt.block_on(async {
-        run_async(opt).await
-    })
+    rt.block_on(async { run_async(opt).await })
 }
 
 async fn run_async(opt: Opt) -> Result<()> {
@@ -90,8 +68,9 @@ async fn run_async(opt: Opt) -> Result<()> {
         }
 
         if !response.status().is_success() {
+            let status = response.status().clone();
             let body = response.text().await?;
-            return Err(ResponseError::new(body).into());
+            return Err(format!("Error getting {}: {}: {}", url, status, body).into());
         }
 
         let body = response.json::<Value>().await?;
