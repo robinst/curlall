@@ -95,6 +95,7 @@ async fn run_async(opt: Opt) -> Result<()> {
             }
 
             for value in values {
+                // TODO: Abstract this
                 serde_json::to_writer(io::stdout(), value)?;
                 println!();
                 values_printed += 1;
