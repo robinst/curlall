@@ -1,3 +1,4 @@
+use reqwest::header;
 use reqwest::Client;
 use reqwest::RequestBuilder;
 use reqwest::StatusCode;
@@ -7,7 +8,9 @@ use std::{io, process};
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
 
-const NAME: &str = "concurl";
+const NAME: &str = env!("CARGO_PKG_NAME");
+
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -47,7 +50,7 @@ fn run(opt: Opt) -> Result<()> {
 }
 
 async fn run_async(opt: Opt) -> Result<()> {
-    let client = Client::new();
+    let client = Client::builder().user_agent(APP_USER_AGENT).build()?;
 
     let start_url = Url::parse(&opt.url)?;
     let mut pager = Pager::new(&start_url);
@@ -56,7 +59,7 @@ async fn run_async(opt: Opt) -> Result<()> {
     let mut values_printed = 0;
     let mut next_url = Some(start_url);
     while let Some(url) = next_url {
-        let request = request(url.clone(), &client, &opt);
+        let request = build_request(url.clone(), &client, &opt);
 
         let response = request.send().await?;
         if response.status() == StatusCode::NOT_FOUND && values_printed > 0 {
@@ -71,11 +74,19 @@ async fn run_async(opt: Opt) -> Result<()> {
             return Err(format!("Error getting {}: {}: {}", url, status, body).into());
         }
 
+        let next_link_from_header = response
+            .headers()
+            .get(header::LINK)
+            .and_then(|value| value.to_str().ok())
+            .and_then(parse_next_link)
+            .map(|s| s.to_string());
+
         let body = response.json::<Value>().await?;
 
         if let Some(values) = body
             .get("values")
             .and_then(|v| v.as_array())
+            .or_else(|| body.get("items").and_then(|v| v.as_array()))
             .or_else(|| body.as_array())
         {
             if values.is_empty() {
@@ -97,8 +108,12 @@ async fn run_async(opt: Opt) -> Result<()> {
         }
 
         if values_printed < values_limit {
-            let from_response = body.get("next").and_then(|o| o.as_str());
-            next_url = pager.next(from_response)?;
+            let from_response = next_link_from_header.or_else(|| {
+                body.get("next")
+                    .and_then(|o| o.as_str())
+                    .map(|s| s.to_string())
+            });
+            next_url = pager.next(from_response.as_deref())?;
         } else {
             next_url = None;
         }
@@ -107,7 +122,7 @@ async fn run_async(opt: Opt) -> Result<()> {
     Ok(())
 }
 
-fn request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
+fn build_request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
     let mut request = client.get(url);
     if let Some(user_password) = &opt.user_password {
         let parts: Vec<_> = user_password.splitn(2, ":").collect();
@@ -118,6 +133,22 @@ fn request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
         }
     }
     request
+}
+
+/// See https://tools.ietf.org/html/rfc5988#section-5
+///
+/// Example header:
+///
+///     <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel="next",
+///      <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34>; rel="last""
+fn parse_next_link(link_header: &str) -> Option<&str> {
+    if let Some(end) = link_header.find(r#">; rel="next""#) {
+        let s = &link_header[0..end];
+        if let Some(start) = s.rfind("<") {
+            return Some(&s[start + 1..]);
+        }
+    }
+    return None;
 }
 
 struct Pager {
@@ -184,5 +215,19 @@ impl Pager {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_next_link() {
+        assert_eq!(parse_next_link(""), None);
+        assert_eq!(parse_next_link("<https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel=\"next\""),
+                   Some("https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2"));
+        assert_eq!(parse_next_link("<https://api.github.com/search/code?q=addClass+user%3Amozilla&page=1>; rel=\"prev\", <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=3>; rel=\"next\""),
+                   Some("https://api.github.com/search/code?q=addClass+user%3Amozilla&page=3"));
     }
 }
