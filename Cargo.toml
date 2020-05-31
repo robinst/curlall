@@ -1,5 +1,5 @@
 [package]
-name = "concurl"
+name = "curlall"
 version = "0.1.0"
 authors = ["Robin Stocker"]
 edition = "2018"
@@ -11,3 +11,6 @@ reqwest = { version = "0.10", features = ["json"] }
 tokio = { version = "0.2", features = ["full"] }
 serde_json = "*"
 structopt = "*"
+
+[dev-dependencies]
+hyper = "*"
