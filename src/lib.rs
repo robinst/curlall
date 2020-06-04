@@ -125,8 +125,10 @@ fn build_request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
 ///
 /// Example header:
 ///
-///     <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel="next",
-///      <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34>; rel="last""
+/// ```text
+/// <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=2>; rel="next",
+/// <https://api.github.com/search/code?q=addClass+user%3Amozilla&page=34>; rel="last"
+/// ```
 fn parse_next_link(link_header: &str) -> Option<&str> {
     if let Some(end) = link_header.find(r#">; rel="next""#) {
         let s = &link_header[0..end];
