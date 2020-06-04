@@ -56,7 +56,7 @@ pub async fn run_async(opt: Opt) -> Result<()> {
 
         if !response.status().is_success() {
             let status = response.status().clone();
-            let body = response.text().await?;
+            let body = response.text().await.unwrap_or(String::new());
             return Err(format!("Error getting {}: {}: {}", url, status, body).into());
         }
 
@@ -81,7 +81,6 @@ pub async fn run_async(opt: Opt) -> Result<()> {
             }
 
             for value in values {
-                // TODO: Abstract this
                 serde_json::to_writer(io::stdout(), value)?;
                 println!();
                 values_printed += 1;
@@ -167,10 +166,10 @@ impl Pager {
     }
 
     fn next(&mut self, next_url_from_response: Option<&str>) -> Result<Option<Url>> {
-        // If there's a "next" URL, use that. Otherwise try `page=N` query param
+        // If there's a "next" URL, use that from now on. Otherwise try `page=N` query param.
         if let Some(next) = next_url_from_response {
             self.try_page_numbers = false;
-            Ok(Some(Url::parse(next)?))
+            Ok(Some(self.start_url.join(next)?))
         } else if self.try_page_numbers {
             let mut page_number = if let Some(page_number) = self.page {
                 page_number
