@@ -19,6 +19,5 @@ Limit to first 100:
 
 ## TODO
 
-* Change `-n` option to a long option only to avoid clashes with curl option?
 * `-H` option for custom headers such as Authorization with bearer
   tokens

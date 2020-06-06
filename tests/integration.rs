@@ -126,10 +126,10 @@ async fn run_stdout(url: &str, limit: Option<usize>, auth: Option<&str>) -> Stri
 async fn run(url: &str, limit: Option<usize>, auth: Option<&str>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_curlall"));
     if let Some(limit) = limit {
-        command.arg("-n").arg(format!("{}", limit));
+        command.arg("--limit").arg(format!("{}", limit));
     }
     if let Some(auth) = auth {
-        command.arg("-u").arg(auth);
+        command.arg("--user").arg(auth);
     }
     command.arg(url);
     command.output().await.expect("failed to run command")

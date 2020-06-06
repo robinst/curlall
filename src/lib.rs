@@ -22,8 +22,8 @@ pub struct Opt {
     pub user_password: Option<String>,
 
     /// How many values to return (determines how many pages are fetched)
-    #[structopt(short = "n", long = "number")]
-    pub number: Option<usize>,
+    #[structopt(long = "limit")]
+    pub limit: Option<usize>,
 
     pub url: String,
 }
@@ -41,7 +41,7 @@ pub async fn run_async(opt: Opt) -> Result<()> {
     let start_url = Url::parse(&opt.url)?;
     let mut pager = Pager::new(&start_url);
 
-    let values_limit = opt.number.unwrap_or(std::usize::MAX);
+    let values_limit = opt.limit.unwrap_or(std::usize::MAX);
     let mut values_printed = 0;
     let mut next_url = Some(start_url);
     while let Some(url) = next_url {
