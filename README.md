@@ -24,3 +24,12 @@ Print all URLs for users who starred github.com/rust-lang/rust:
 
 1. Install Rust: https://www.rust-lang.org/tools/install
 2. Install curlall: `cargo install curlall`
+
+## Contributing
+
+Pull requests, issues and comments welcome!
+
+## License
+
+curlall is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
+See LICENSE-APACHE and LICENSE-MIT for details. Opening a pull requests is assumed to signal agreement with these licensing terms.
