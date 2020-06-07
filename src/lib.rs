@@ -71,8 +71,8 @@ pub async fn run_async(opt: Opt) -> Result<()> {
         }
 
         if !response.status().is_success() {
-            let status = response.status().clone();
-            let body = response.text().await.unwrap_or(String::new());
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
             return Err(format!("Error getting {}: {}: {}", url, status, body).into());
         }
 
@@ -154,11 +154,11 @@ fn build_request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
 fn parse_next_link(link_header: &str) -> Option<&str> {
     if let Some(end) = link_header.find(r#">; rel="next""#) {
         let s = &link_header[0..end];
-        if let Some(start) = s.rfind("<") {
+        if let Some(start) = s.rfind('<') {
             return Some(&s[start + 1..]);
         }
     }
-    return None;
+    None
 }
 
 struct Pager {
