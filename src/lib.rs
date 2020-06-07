@@ -14,7 +14,7 @@ static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_P
 #[derive(Debug, StructOpt)]
 #[structopt(
 name = NAME,
-about = "Simple curl but automatically pages through results"
+about = "Simple curl-like tool to automatically page through APIs"
 )]
 pub struct Opt {
     /// Basic auth
@@ -26,7 +26,6 @@ pub struct Opt {
     pub limit: Option<usize>,
 
     /// Add headers. Add multiple headers like this:
-    ///
     /// -H "Accept: application/json" -H "Cache-Control: no-cache"
     #[structopt(short = "H", long = "header", name = "Name: Value", number_of_values = 1)]
     pub headers: Vec<String>,
