@@ -27,7 +27,12 @@ pub struct Opt {
 
     /// Add headers. Add multiple headers like this:
     /// -H "Accept: application/json" -H "Cache-Control: no-cache"
-    #[structopt(short = "H", long = "header", name = "Name: Value", number_of_values = 1)]
+    #[structopt(
+        short = "H",
+        long = "header",
+        name = "Name: Value",
+        number_of_values = 1
+    )]
     pub headers: Vec<String>,
 
     pub url: String,
@@ -115,7 +120,7 @@ pub async fn run_async(opt: Opt) -> Result<()> {
                     .and_then(|o| o.as_str())
                     .map(|s| s.to_string())
             });
-            next_url = pager.next(from_response.as_deref())?;
+            next_url = pager.next(from_response)?;
         } else {
             next_url = None;
         }
@@ -189,11 +194,11 @@ impl Pager {
         }
     }
 
-    fn next(&mut self, next_url_from_response: Option<&str>) -> Result<Option<Url>> {
+    fn next(&mut self, next_url_from_response: Option<String>) -> Result<Option<Url>> {
         // If there's a "next" URL, use that from now on. Otherwise try `page=N` query param.
         if let Some(next) = next_url_from_response {
             self.try_page_numbers = false;
-            Ok(Some(self.start_url.join(next)?))
+            Ok(Some(self.start_url.join(&next)?))
         } else if self.try_page_numbers {
             let mut page_number = if let Some(page_number) = self.page {
                 page_number
