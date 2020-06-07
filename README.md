@@ -15,9 +15,3 @@ Print all repository names on bitbucket.org/atlassian:
 Limit to first 100:
 
     curlall -n 100 https://api.bitbucket.org/2.0/repositories/atlassian | jq -r .full_name
-
-
-## TODO
-
-* `-H` option for custom headers such as Authorization with bearer
-  tokens

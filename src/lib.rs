@@ -14,18 +14,35 @@ static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_P
 #[derive(Debug, StructOpt)]
 #[structopt(
 name = NAME,
-about = "Basic curl but automatically follows next page links"
+about = "Simple curl but automatically pages through results"
 )]
 pub struct Opt {
     /// Basic auth
     #[structopt(short = "u", long = "user", name = "user:password")]
     pub user_password: Option<String>,
 
-    /// How many values to return (determines how many pages are fetched)
+    /// How many values to fetch. If not specified, all pages are fetched.
     #[structopt(long = "limit")]
     pub limit: Option<usize>,
 
+    /// Add headers. Add multiple headers like this:
+    ///
+    /// -H "Accept: application/json" -H "Cache-Control: no-cache"
+    #[structopt(short = "H", long = "header", name = "Name: Value", number_of_values = 1)]
+    pub headers: Vec<String>,
+
     pub url: String,
+}
+
+impl Default for Opt {
+    fn default() -> Self {
+        Self {
+            user_password: None,
+            limit: None,
+            headers: Vec::new(),
+            url: "".to_string(),
+        }
+    }
 }
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -111,12 +128,18 @@ pub async fn run_async(opt: Opt) -> Result<()> {
 fn build_request(url: Url, client: &Client, opt: &Opt) -> RequestBuilder {
     let mut request = client.get(url);
     if let Some(user_password) = &opt.user_password {
-        let parts: Vec<_> = user_password.splitn(2, ":").collect();
+        let parts: Vec<_> = user_password.splitn(2, ':').collect();
         if parts.len() == 1 {
             request = request.basic_auth(&parts[0], Option::<&str>::None);
         } else {
             request = request.basic_auth(&parts[0], Some(&parts[1]));
         }
+    }
+    for header in &opt.headers {
+        let mut parts = header.splitn(2, ':');
+        let name = parts.next().unwrap();
+        let value = parts.next().unwrap_or("").trim_start();
+        request = request.header(name, value);
     }
     request
 }

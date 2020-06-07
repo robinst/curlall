@@ -1,6 +1,7 @@
-use curlall::NAME;
+use curlall::{Opt, NAME};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{header, Body, Request, Response, Server, StatusCode};
+use std::fmt::Write;
 use std::process::Output;
 use tokio::process::Command;
 
@@ -59,6 +60,20 @@ async fn generic(request: Request<Body>) -> Result<Response<Body>> {
                 "values": [1, 2]
             }"#,
         ),
+        "/echo-headers" => {
+            let mut formatted = String::new();
+            for (key, value) in request.headers().iter() {
+                write!(&mut formatted, "{}: {}, ", key, value.to_str()?)?;
+            }
+            Ok(Response::builder()
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{
+                        "values": ["{}"]
+                    }}"#,
+                    formatted
+                )))?)
+        }
         "/error-500" => Ok(Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body(Body::empty())?),
@@ -118,20 +133,52 @@ async fn github(request: Request<Body>) -> Result<Response<Body>> {
     }
 }
 
-async fn run_stdout(url: &str, limit: Option<usize>, auth: Option<&str>) -> String {
-    let output = run(url, limit, auth).await;
+async fn run_success_url(url: String) -> String {
+    run_success(Opt {
+        url,
+        ..Opt::default()
+    })
+    .await
+}
+
+async fn run_success(opt: Opt) -> String {
+    let output = run(opt).await;
+    let success = output.status.success();
+    if !success {
+        assert!(
+            success,
+            "Command failed unexpectedly: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-async fn run(url: &str, limit: Option<usize>, auth: Option<&str>) -> Output {
+async fn run_error(opt: Opt) -> String {
+    let output = run(opt).await;
+    let success = output.status.success();
+    if success {
+        assert!(
+            !success,
+            "Command expected to error, but was successful: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+    String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+async fn run(opt: Opt) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_curlall"));
-    if let Some(limit) = limit {
+    if let Some(limit) = opt.limit {
         command.arg("--limit").arg(format!("{}", limit));
     }
-    if let Some(auth) = auth {
-        command.arg("--user").arg(auth);
+    if let Some(user_password) = opt.user_password {
+        command.arg("--user").arg(user_password);
     }
-    command.arg(url);
+    for header in &opt.headers {
+        command.arg("--header").arg(header);
+    }
+    command.arg(opt.url);
     command.output().await.expect("failed to run command")
 }
 
@@ -142,34 +189,70 @@ async fn test_generic() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let base_url = format!("http://{}", server.local_addr());
     tokio::spawn(server);
 
-    let stdout = run_stdout(&format!("{}/without-link", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/without-link", base_url)).await;
     assert_eq!(stdout, "1\n2\n3\n4\n5\n6\n");
 
-    let stdout = run_stdout(&format!("{}/without-link?page=2", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/without-link?page=2", base_url)).await;
     assert_eq!(stdout, "3\n4\n5\n6\n");
 
-    let stdout = run_stdout(&format!("{}/without-link", base_url), Some(1), None).await;
+    let stdout = run_success(Opt {
+        url: format!("{}/without-link", base_url),
+        limit: Some(1),
+        ..Opt::default()
+    })
+    .await;
     assert_eq!(stdout, "1\n");
 
-    let stdout = run_stdout(&format!("{}/without-link", base_url), Some(2), None).await;
+    let stdout = run_success(Opt {
+        url: format!("{}/without-link", base_url),
+        limit: Some(2),
+        ..Opt::default()
+    })
+    .await;
     assert_eq!(stdout, "1\n2\n");
 
-    let stdout = run_stdout(
-        &format!("{}/basic-auth", base_url),
-        None,
-        Some("admin:hunter2"),
-    )
+    let stdout = run_success(Opt {
+        url: format!("{}/basic-auth", base_url),
+        user_password: Some("admin:hunter2".to_string()),
+        ..Opt::default()
+    })
     .await;
     assert_eq!(stdout, "1\n2\n3\n4\n");
 
-    let output = run(&format!("{}/non-numeric-page?page=x", base_url), None, None).await;
-    assert_eq!(output.status.success(), false);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = run_success(Opt {
+        url: format!("{}/basic-auth", base_url),
+        headers: vec![format!("Authorization: {}", BASIC_AUTH)],
+        ..Opt::default()
+    })
+    .await;
+    assert_eq!(stdout, "1\n2\n3\n4\n");
+
+    let stdout = run_success(Opt {
+        url: format!("{}/echo-headers", base_url),
+        headers: vec![
+            "Foo: 1".to_string(),
+            "Foo: 2".to_string(),
+            "Bar: a: b".to_string(),
+        ],
+        ..Opt::default()
+    })
+    .await;
+    assert!(stdout.contains(r#"foo: 1"#), stdout);
+    assert!(stdout.contains(r#"foo: 2"#));
+    assert!(stdout.contains(r#"bar: a: b"#));
+
+    let stderr = run_error(Opt {
+        url: format!("{}/non-numeric-page?page=x", base_url),
+        ..Opt::default()
+    })
+    .await;
     assert!(stderr.contains("Page query param 'x' could not be parsed as a number"));
 
-    let output = run(&format!("{}/error-500", base_url), None, None).await;
-    assert_eq!(output.status.success(), false);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = run_error(Opt {
+        url: format!("{}/error-500", base_url),
+        ..Opt::default()
+    })
+    .await;
     let expected = format!(
         "{}: Error getting {}/error-500: 500 Internal Server Error: \n",
         NAME, base_url
@@ -186,14 +269,11 @@ async fn test_bitbucket() -> std::result::Result<(), Box<dyn std::error::Error>>
     let base_url = format!("http://{}", server.local_addr());
     tokio::spawn(server);
 
-    let stdout = run_stdout(&format!("{}/next-link", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/next-link", base_url)).await;
     assert_eq!(stdout, "1\n2\n3\n4\n5\n");
 
-    let stdout = run_stdout(&format!("{}/next-link?page=b", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/next-link?page=b", base_url)).await;
     assert_eq!(stdout, "3\n4\n5\n");
-
-    let stdout = run_stdout(&format!("{}/next-link?page=c", base_url), None, None).await;
-    assert_eq!(stdout, "5\n");
 
     Ok(())
 }
@@ -205,14 +285,11 @@ async fn test_github() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let base_url = format!("http://{}", server.local_addr());
     tokio::spawn(server);
 
-    let stdout = run_stdout(&format!("{}/link-header", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/link-header", base_url)).await;
     assert_eq!(stdout, "1\n2\n3\n4\n5\n");
 
-    let stdout = run_stdout(&format!("{}/link-header?page=b", base_url), None, None).await;
+    let stdout = run_success_url(format!("{}/link-header?page=b", base_url)).await;
     assert_eq!(stdout, "3\n4\n5\n");
-
-    let stdout = run_stdout(&format!("{}/link-header?page=c", base_url), None, None).await;
-    assert_eq!(stdout, "5\n");
 
     Ok(())
 }
