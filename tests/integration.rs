@@ -168,7 +168,9 @@ async fn run_error(opt: Opt) -> String {
 }
 
 async fn run(opt: Opt) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_curlall"));
+    // Rust 1.43.0 added CARGO_BIN_EXE_, fall back to manual path if not available.
+    let path = option_env!("CARGO_BIN_EXE_curlall").unwrap_or("./target/debug/curlall");
+    let mut command = Command::new(path);
     if let Some(limit) = opt.limit {
         command.arg("--limit").arg(format!("{}", limit));
     }
