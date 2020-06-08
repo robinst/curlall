@@ -8,6 +8,10 @@ Simple curl-like CLI tool to automatically page through APIs.
 
 ![demo](demo.gif)
 
+Tested with GitHub and Bitbucket APIs. Other websites will have
+different ways to do paging, so let me know if it doesn't work for yours
+and we can add support.
+
 ## Examples
 
 Print all repository names on bitbucket.org/atlassian:
