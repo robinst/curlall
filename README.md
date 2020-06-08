@@ -6,6 +6,8 @@ Simple curl-like CLI tool to automatically page through APIs.
 * Works with APIs that return pages of JSON objects (e.g. GitHub or Bitbucket APIs)
 * Prints the results, one line for each JSON object; ideal for piping to [`jq`](https://stedolan.github.io/jq/)
 
+![demo](demo.gif)
+
 ## Examples
 
 Print all repository names on bitbucket.org/atlassian:
