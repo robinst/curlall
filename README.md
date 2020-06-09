@@ -1,6 +1,9 @@
 curlall
 =======
 
+[![crates.io](https://img.shields.io/crates/v/curlall.svg)](https://crates.io/crates/curlall)
+[![ci](https://github.com/robinst/curlall/workflows/ci/badge.svg)](https://github.com/robinst/curlall/actions?query=workflow%3Aci)
+
 Simple curl-like CLI tool to automatically page through APIs.
 
 * Works with APIs that return pages of JSON objects (e.g. GitHub or Bitbucket APIs)
