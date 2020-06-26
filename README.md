@@ -9,7 +9,7 @@ Simple curl-like CLI tool to automatically page through APIs.
 * Works with APIs that return pages of JSON objects (e.g. GitHub or Bitbucket APIs)
 * Prints the results, one line for each JSON object; ideal for piping to [`jq`](https://stedolan.github.io/jq/)
 
-![demo](demo.svg)
+![demo](https://raw.githubusercontent.com/robinst/curlall/c03c9bf94d0c4d33a6c659896fe681cf8546c10c/demo.svg)
 
 Tested with GitHub and Bitbucket APIs. Other websites will have
 different ways to do paging, so let me know if it doesn't work for yours
