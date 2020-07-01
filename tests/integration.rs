@@ -3,6 +3,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{header, Body, Request, Response, Server, StatusCode};
 use std::fmt::Write;
 use std::process::Output;
+use std::time::Duration;
 use tokio::process::Command;
 
 // Basic auth for "admin:hunter2"
@@ -174,6 +175,9 @@ async fn run(opt: Opt) -> Output {
     if let Some(limit) = opt.limit {
         command.arg("--limit").arg(format!("{}", limit));
     }
+    if let Some(wait) = opt.wait {
+        command.arg("--wait").arg(format!("{}", wait.as_secs_f64()));
+    }
     if let Some(user_password) = opt.user_password {
         command.arg("--user").arg(user_password);
     }
@@ -212,6 +216,14 @@ async fn test_generic() -> std::result::Result<(), Box<dyn std::error::Error>> {
     })
     .await;
     assert_eq!(stdout, "1\n2\n");
+
+    let stdout = run_success(Opt {
+        url: format!("{}/without-link", base_url),
+        wait: Some(Duration::from_secs_f64(0.1)),
+        ..Opt::default()
+    })
+    .await;
+    assert_eq!(stdout, "1\n2\n3\n4\n5\n6\n");
 
     let stdout = run_success(Opt {
         url: format!("{}/basic-auth", base_url),

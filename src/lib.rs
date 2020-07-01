@@ -5,11 +5,18 @@ use reqwest::StatusCode;
 use reqwest::Url;
 use serde_json::Value;
 use std::io;
+use std::num::ParseFloatError;
+use std::time::Duration;
 use structopt::StructOpt;
 use tokio::runtime::Runtime;
+use tokio::time;
 
 pub const NAME: &str = env!("CARGO_PKG_NAME");
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
+fn parse_duration(src: &str) -> std::result::Result<Duration, ParseFloatError> {
+    Ok(Duration::from_secs_f64(src.parse()?))
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -22,8 +29,12 @@ pub struct Opt {
     pub user_password: Option<String>,
 
     /// How many values to fetch. If not specified, all pages are fetched.
-    #[structopt(long = "limit")]
+    #[structopt(long = "limit", name = "count")]
     pub limit: Option<usize>,
+
+    /// How many seconds to wait between requests.
+    #[structopt(long = "wait", name = "seconds", parse(try_from_str = parse_duration))]
+    pub wait: Option<Duration>,
 
     /// Add headers. Add multiple headers like this:
     /// -H "Accept: application/json" -H "Cache-Control: no-cache"
@@ -43,6 +54,7 @@ impl Default for Opt {
         Self {
             user_password: None,
             limit: None,
+            wait: None,
             headers: Vec::new(),
             url: "".to_string(),
         }
@@ -114,15 +126,21 @@ pub async fn run_async(opt: Opt) -> Result<()> {
             return Err(format!(r#"Could not read values from response. Expected either `{{"values": [...]}}` or `[...]`, got: {}"#, body).into());
         }
 
-        if values_printed < values_limit {
+        next_url = if values_printed < values_limit {
             let from_response = next_link_from_header.or_else(|| {
                 body.get("next")
                     .and_then(|o| o.as_str())
                     .map(|s| s.to_string())
             });
-            next_url = pager.next(from_response)?;
+            pager.next(from_response)?
         } else {
-            next_url = None;
+            None
+        };
+
+        if next_url.is_some() {
+            if let Some(wait) = opt.wait {
+                time::delay_for(wait).await
+            }
         }
     }
 
