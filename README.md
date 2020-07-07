@@ -4,7 +4,11 @@ curlall
 [![crates.io](https://img.shields.io/crates/v/curlall.svg)](https://crates.io/crates/curlall)
 [![ci](https://github.com/robinst/curlall/workflows/ci/badge.svg)](https://github.com/robinst/curlall/actions?query=workflow%3Aci)
 
-Simple curl-like CLI tool to automatically page through APIs.
+Have you ever used an API and wanted to get all results, but it had
+paging and it was too hard to do multiple `curl` calls?
+
+That's what `curlall` is for: A curl-like command to automatically page
+through APIs.
 
 * Works with APIs that return pages of JSON objects (e.g. GitHub or Bitbucket APIs)
 * Prints the results, one line for each JSON object; ideal for piping to [`jq`](https://stedolan.github.io/jq/)
